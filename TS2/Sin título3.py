@@ -14,7 +14,7 @@ N = 1000
 fs = 1000
 VF = 2
 B = 8
-kn = 1 # k_n = 1 según consigna
+kn = 10 # k_n = 1 según consigna
 
 delta_f = fs / N
 
