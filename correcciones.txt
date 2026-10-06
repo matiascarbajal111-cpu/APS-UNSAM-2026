@@ -1,0 +1,16 @@
+Correcciones de las TSs
+
+* TS3: Desparramo Espectral
+    * Pasá por un corrector el texto que hay algunos errores, mucho menos que antes, pero sigue habiendo.
+      Dale que vas mejorando.
+    * En el primer plot de los espectros de las señales sinusoidales es mejor usar stem, porque si usás plot
+      te grafica un espectro continuo y la FFT (DFT) es discreta.
+    * La etiqueta del primer plot dice Magnitud [dB] y Amplitud [dB] que es peor todavía. En realidad son 
+      valores de densidad espectral o también podés poner |X(k)|^2 normalizado.
+    * El valor de los picos correspondientes a las señales sinusoidales normalizadas en potencia dan 0dB según
+      tu gráfico, eso no es del todo correcto. No hay que olvidar que vos estás graficando la mitad del rango 
+      de frecuencias porque la otra mitad es redundante, pero resulta que esa otra mitad aporta energía, esto 
+      implica que los picos tienen que dar algo debajo de 0dB.
+    * Falta una explicación del efecto del zero padding considerando la convolución del espectro de la señal 
+      sinusoidal con la transformada de la ventana implícita por un lado y explícita del zero padding por el 
+      otro.
