@@ -14,3 +14,12 @@ Correcciones de las TSs
     * Falta una explicación del efecto del zero padding considerando la convolución del espectro de la señal 
       sinusoidal con la transformada de la ventana implícita por un lado y explícita del zero padding por el 
       otro.
+
+* TS4: Estimadores
+    * Los ejes verticales de los histogramas tienen una etiqueta que no es correcta, no son realizaciones esos 
+      valores, son número de casos o ocurrencias.
+    * Sería mejor que vayas explicando el código y cada sección mientras vas desarrollando el trabajo. Cada 
+      salida de código debería tener su análisis propio.
+    * En la conclusión decís: ¨La ventana Flat-Top es la mejor opción. En su histograma se observa que casi 
+      todas las realizaciones caen apretadas justo sobre el valor real., logrando una dispersión mínima y un 
+      sesgo prácticamente nulo¨. Me parece mucho decir que el sesgo es prácticamente nulo.
