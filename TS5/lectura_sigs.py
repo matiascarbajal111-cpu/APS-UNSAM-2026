@@ -1,178 +1,291 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Nov  8 19:55:30 2023
-
-@author: mariano
-"""
-
 import numpy as np
 from scipy import signal as sig
-
 import matplotlib.pyplot as plt
-   
 import scipy.io as sio
-from scipy.io.wavfile import write
-
-
-#%%
-
-##################
-# Lectura de ECG #
-##################
-
+from numpy.fft import fft
+#cte universales 
 fs_ecg = 1000 # Hz
-
-##################
-## ECG con ruido
-##################
-
-# para listar las variables que hay en el archivo
-sio.whosmat('ECG_TP4.mat')
-mat_struct = sio.loadmat('./ECG_TP4.mat')
-
-ecg_one_lead = mat_struct['ecg_lead']
-N = len(ecg_one_lead)
-
-hb_1 = mat_struct['heartbeat_pattern1']
-hb_2 = mat_struct['heartbeat_pattern2']
-
-plt.figure()
-plt.plot(ecg_one_lead[5000:12000])
-
-plt.figure()
-plt.plot(hb_1)
-
-plt.figure()
-plt.plot(hb_2)
-
-##################
-## ECG sin ruido
-##################
-
-ecg_one_lead = np.load('ecg_sin_ruido.npy')
-
-plt.figure()
-plt.plot(ecg_one_lead)
-
-# si ya hiciste: ecg_one_lead = np.load('ecg_sin_ruido.npy')
-#ecg = np.asarray(ecg_one_lead, dtype=float).ravel()
-fs_ecg = 1000.0  # o el fs real si lo tenés distinto
-
-cantidad_promedio = 30
-nperseg = ecg_one_lead.shape[0]//cantidad_promedio
-noverlap = nperseg // 2
-
-f, Pxx = sig.welch(ecg_one_lead, fs=fs_ecg, window='hann', nperseg=nperseg,nfft= 8*nperseg)
-plt.figure(figsize=(9,4))
-plt.xlim(0, 50)
-plt.plot(f,Pxx)
-
-plt.title('ECG – PSD (Welch, hann)')
-plt.xlabel('Frecuencia [Hz]')
-plt.grid(True, which='both')
-plt.show()
-
-#%%
-
-####################################
-# Lectura de pletismografía (PPG)  #
-####################################
-
 fs_ppg = 400 # Hz
 
-##################
-## PPG con ruido
-##################
-
-# # Cargar el archivo CSV como un array de NumPy
-# ppg = np.genfromtxt('PPG.csv', delimiter=',', skip_header=1)  # Omitir la cabecera si existe
-
-
-##################
-## PPG sin ruido
-##################
-
-ppg = np.load('ppg_sin_ruido.npy')
-
-plt.figure()
-plt.plot(ppg)
-
-
-#%%
-
-####################
-# Lectura de audio #
-####################
-
-# Cargar el archivo CSV como un array de NumPy
+#funciones de ingreso
+#Ecg sin ruido 
+ecg_one_lead = np.load('ecg_sin_ruido.npy')
+Necg=ecg_one_lead.shape[0]
+#La cucaracha
 fs_audio, wav_data = sio.wavfile.read('la cucaracha.wav')
-# fs_audio, wav_data = sio.wavfile.read('prueba psd.wav')
-# fs_audio, wav_data = sio.wavfile.read('silbido.wav')
+Ncuca=wav_data.shape[0]
+#PPG
+ppg = np.load('ppg_sin_ruido.npy')
+Nppg=ppg.shape[0]
+
+
+#blackman-tuky ECG 
+#Hago autocorrelacion
+Ecgxx = ecg_one_lead - np.mean(ecg_one_lead)
+Recg=sig.correlate(Ecgxx,Ecgxx, mode='full')/Necg
+lagsecg = np.arange(-Necg+1, Necg)
+centerecg = len(Recg)//2
+M= int(1.0 * fs_ecg)
+Recg_seg = Recg[centerecg-M : centerecg+M+1]
+#ventaneo por la ventana triangular
+Recgventaneada=Recg_seg*sig.windows.bartlett(2*M+1)   
+#le calculo la FFT
+FFTECG=fft(Recgventaneada,axis=0, n=4*Necg)
+
+half = 4*Necg//2
+fEcg = np.linspace(0, fs_ecg/2, half, endpoint=False)
 
 plt.figure()
-plt.plot(wav_data)
+plt.plot(fEcg, np.abs(FFTECG[:half]))   
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD (u.a.)")
+plt.xlim([0, 80])                 
+plt.title("Figura[1]: ECG - Blackman-Tukey")
 
-# si quieren oirlo, tienen que tener el siguiente módulo instalado
-# pip install sounddevice
-# import sounddevice as sd
-# sd.play(wav_data, fs_audio)
 
-# ====== FILTRO PARA ECG (notch 50 Hz + band-pass 0.5–40 Hz) ======
-# Requiere: from scipy import signal as sig, import numpy as np, import matplotlib.pyplot as plt
-
-def filtrar_ecg(ecg, fs, f_notch=50.0, q_notch=30.0, f_lo=0.5, f_hi=40.0):
-    x = np.asarray(ecg, dtype=float).ravel()
-
-    # Notch 50 Hz (si estás en 60 Hz, cambia f_notch=60.0)
-    b_notch, a_notch = sig.iirnotch(w0=f_notch, Q=q_notch, fs=fs)
-    sos_notch = sig.tf2sos(b_notch, a_notch)
-
-    # Band-pass Butter 4º orden (2º por flanco): 0.5–40 Hz
-    sos_bp = sig.butter(N=4, Wn=[f_lo, f_hi], btype='bandpass', fs=fs, output='sos')
-
-    # Cero fase (ida y vuelta) para no meter retardo de grupo
-    y = sig.sosfiltfilt(sos_notch, x)
-    y = sig.sosfiltfilt(sos_bp, y)
-    return y, sos_notch, sos_bp
-
-# --- aplicar al ECG cargado ---
-ecg = np.asarray(ecg_one_lead, dtype=float).ravel()
-y, sos_notch, sos_bp = filtrar_ecg(ecg, fs_ecg)
-
-# --- gráficos rápidos: señal en el tiempo (5 s) ---
-t = np.arange(ecg.size)/fs_ecg
-plt.figure(figsize=(10,4))
-plt.plot(t, ecg, label='ECG crudo', alpha=0.6)
-plt.plot(t, y,   label='ECG filtrado', linewidth=1.2)
-plt.xlim(0, 5)                         # zoom 5 s
-plt.xlabel('Tiempo [s]'); plt.ylabel('Amplitud')
-plt.title('ECG crudo vs filtrado (notch 50 Hz + BP 0.5–40 Hz)')
-plt.grid(True); plt.legend(); plt.tight_layout()
-
-# --- PSD antes/después (Welch) ---
-nperseg = max(1024, ecg.size//30)
-f0, P0 = sig.welch(ecg, fs=fs_ecg, window='hann', nperseg=nperseg, noverlap=nperseg//2, nfft=8*nperseg)
-f1, P1 = sig.welch(y,   fs=fs_ecg, window='hann', nperseg=nperseg, noverlap=nperseg//2, nfft=8*nperseg)
-
-plt.figure(figsize=(10,4))
-plt.semilogy(f0, P0, label='Crudo')
-plt.semilogy(f1, P1, label='Filtrado')
-plt.xlim(0, 80)                         # mirá la zona de 50 Hz
-plt.xlabel('Frecuencia [Hz]'); plt.ylabel('PSD')
-plt.title('ECG – PSD (Welch)')
-plt.grid(True, which='both'); plt.legend(); plt.tight_layout()
-
-# --- (opcional) ver respuesta de los filtros ---
-wN, hN = sig.sosfreqz(sos_notch, fs=fs_ecg)
-wB, hB = sig.sosfreqz(sos_bp,    fs=fs_ecg)
-plt.figure(figsize=(10,4))
-plt.semilogx(wN, 20*np.log10(np.maximum(np.abs(hN),1e-12)), label='Notch 50 Hz')
-plt.semilogx(wB, 20*np.log10(np.maximum(np.abs(hB),1e-12)), label='BP 0.5–40 Hz')
-plt.xlabel('Frecuencia [Hz]'); plt.ylabel('|H(f)| [dB]')
-plt.title('Respuestas en frecuencia'); plt.grid(True, which='both'); plt.legend(); plt.tight_layout()
-
+cpECG=15 #cantidad de promedio
+npersegECG=ecg_one_lead.shape[0] // cpECG
+print("cantidad:",npersegECG)
+nfft=100*npersegECG
+win='hann'
+tWECGSR_ECG,WECGSR_ECG=sig.welch(ecg_one_lead,fs=fs_ecg,window=win,nperseg=npersegECG,nfft=nfft)
+plt.figure()
+plt.plot(tWECGSR_ECG,(WECGSR_ECG))
+plt.xlim(0,50)
+plt.title("Figura[2]:Densidad espectral de potencia (Welch) con 15 promedios" )
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWECGSR_ECG,10*np.log10(WECGSR_ECG))
+plt.title("Figura[3]:Densidad espectral de potencia (Welch) con 15 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
 plt.show()
 
 
+cpECG=25 #cantidad de promedio
+npersegECG=ecg_one_lead.shape[0] // cpECG
+print("cantidad:",npersegECG)
+nfft=100*npersegECG
+win='hann'
+tWECGSR_ECG,WECGSR_ECG=sig.welch(ecg_one_lead,fs=fs_ecg,window=win,nperseg=npersegECG,nfft=nfft)
+plt.figure()
+plt.plot(tWECGSR_ECG,(WECGSR_ECG))
+plt.xlim(0,50)
+plt.title("Figura[4]:Densidad espectral de potencia (Welch) con 25 promedios")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWECGSR_ECG,10*np.log10(WECGSR_ECG))
+plt.title("Figura[5]:Densidad espectral de potencia (Welch) con 25 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show()
 
+
+cpECG=35 #cantidad de promedio
+npersegECG=ecg_one_lead.shape[0] // cpECG
+print("cantidad:",npersegECG)
+nfft=100*npersegECG
+win='hann'
+tWECGSR_ECG,WECGSR_ECG=sig.welch(ecg_one_lead,fs=fs_ecg,window=win,nperseg=npersegECG,nfft=nfft)
+plt.figure()
+plt.plot(tWECGSR_ECG,(WECGSR_ECG))
+plt.xlim(0,50)
+plt.title("Figura[6]:Densidad espectral de potencia (Welch) con 35 promedios")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWECGSR_ECG,10*np.log10(WECGSR_ECG))
+plt.title("Figura[7]:Densidad espectral de potencia (Welch) con 35 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show()
+
+#Blackman-turkey 
+#Hago autocorrelacion
+y = wav_data
+if y.ndim > 1:
+    y = y[:, 0]
+y = y.astype(float) - np.mean(y)
+
+Ncu = len(y)
+Rcu = sig.correlate(y, y, mode='full') / Ncu          # biased
+center_cu = len(Rcu) // 2
+
+# elegir M en tiempo -> 0.5 s (ejemplo razonable para audio)
+M_des_cu = int(0.5 * fs_audio)
+# limitar M por los datos
+M_cu = min(M_des_cu, Ncu-1, center_cu, len(Rcu) - center_cu - 1)
+
+Rcu_seg = Rcu[center_cu - M_cu : center_cu + M_cu + 1]
+w_cu = sig.windows.bartlett(len(Rcu_seg))
+Rcu_win = Rcu_seg * w_cu
+
+nfft_cu = 4 * Ncu
+PSD_BT_cu = np.abs(np.fft.rfft(Rcu_win, n=nfft_cu))
+
+plt.figure()
+plt.plot(np.abs(PSD_BT_cu))
+plt.xlim(10750,25000)
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.title('Figura[8]: La cucaracha - Blackman-Tukey')
+
+
+cpcucaracha=10 #cantidad de promedio
+npersegcucaracha=wav_data.shape[0] // cpcucaracha
+print(npersegcucaracha)
+nfftcucaracha=3*npersegcucaracha
+win='hann'
+tWCuca,WCuca=sig.welch(wav_data,fs=fs_audio,window=win,nperseg=npersegcucaracha,nfft=nfftcucaracha)
+plt.figure()
+plt.plot(tWCuca,(WCuca))
+plt.xlim(750,2500)
+plt.title("Figura[9]:Densidad espectral de potencia (Welch) con 10 promedios")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWCuca,10*np.log10(WCuca))
+plt.title("Figura[10]:Densidad espectral de potencia (Welch) con 10 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show() 
+
+cpcucaracha=20 #cantidad de promedio
+npersegcucaracha=wav_data.shape[0] // cpcucaracha
+print(npersegcucaracha)
+nfftcucaracha=3*npersegcucaracha
+win='hann'
+tWCuca,WCuca=sig.welch(wav_data,fs=fs_audio,window=win,nperseg=npersegcucaracha,nfft=nfftcucaracha)
+plt.figure()
+plt.plot(tWCuca,(WCuca))
+plt.xlim(750,2500)
+plt.title("Figura[11]:Densidad espectral de potencia (Welch) con 20 promedios")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWCuca,10*np.log10(WCuca))
+plt.title("Figura[12]:Densidad espectral de potencia (Welch) con 20 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show() 
+
+cpcucaracha=30 #cantidad de promedio
+npersegcucaracha=wav_data.shape[0] // cpcucaracha
+print(npersegcucaracha)
+nfftcucaracha=3*npersegcucaracha
+win='hann'
+tWCuca,WCuca=sig.welch(wav_data,fs=fs_audio,window=win,nperseg=npersegcucaracha,nfft=nfftcucaracha)
+plt.figure()
+plt.plot(tWCuca,(WCuca))
+plt.xlim(750,2500)
+plt.title("Figura[13]:Densidad espectral de potencia (Welch) con 30 promedios")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWCuca,10*np.log10(WCuca))
+plt.title("Figura[14]:Densidad espectral de potencia (Welch) con 30 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show() 
+
+
+# #blackman-tuky PPG 
+#Hago autocorrelacion
+PPGxx = ppg - np.mean(ppg)
+Rppg=sig.correlate(PPGxx,PPGxx, mode='full')/Nppg
+lagsecg = np.arange(-Nppg+1, Nppg)
+centerppg = len(Rppg)//2
+M= int(1.0 * fs_ppg)
+Rppg_seg = Rppg[centerppg-M : centerppg+M+1]
+#ventaneo por la ventana triangular
+Recgventaneada=Rppg_seg*sig.windows.bartlett(2*M+1)   
+#le calculo la FFT
+FFTPPG=fft(Recgventaneada,axis=0, n=4*Necg)
+plt.figure()
+plt.plot(np.abs(FFTPPG))
+plt.xlim([0,10000])
+plt.xlabel("Frecuencia (Hz)")
+plt.ylabel("PSD [V²/Hz]")
+plt.title("Figura[15]: PPG - Blackman-Tukey")
+
+
+cpppg=25 #cantidad de promedio
+npersegPPG=ppg.shape[0] //cpppg
+print("cantidad:",npersegPPG)
+nfft=100*npersegPPG
+win='hann'
+tWPPG,WPPG=sig.welch(ppg,fs=fs_ppg,window=win,nperseg=npersegPPG,nfft=nfft)
+plt.figure()
+plt.plot(tWPPG,(WPPG))
+plt.xlim(0,25)
+plt.title("Figura[16]:Densidad espectral de potencia (Welch) con 25 promedios")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWPPG,10*np.log10(WPPG))
+plt.title("Figura[17]:Densidad espectral de potencia (Welch) con 25 promedios en escala dB")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show()
+
+
+cpECG=25 #cantidad de promedio
+npersegECG=ecg_one_lead.shape[0] // cpECG
+print("cantidad:",npersegECG)
+nfft=100*npersegECG
+win='hann'
+tWECGSR_ECG,WECGSR_ECG=sig.welch(ecg_one_lead,fs=fs_ecg,window=win,nperseg=npersegECG,nfft=nfft)
+plt.figure()
+plt.plot(tWECGSR_ECG,(WECGSR_ECG))
+plt.xlim(0,50)
+plt.title("Figura[18]:Densidad espectral de potencia (Welch) con 25 promedios, del la ECG")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWECGSR_ECG,10*np.log10(WECGSR_ECG))
+plt.title("Figura[19]:Densidad espectral de potencia (Welch) con 25 promedios en escala dB, de la ECG")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show()
+cpcucaracha=20 #cantidad de promedio
+npersegcucaracha=wav_data.shape[0] // cpcucaracha
+print(npersegcucaracha)
+nfftcucaracha=3*npersegcucaracha
+win='hann'
+tWCuca,WCuca=sig.welch(wav_data,fs=fs_audio,window=win,nperseg=npersegcucaracha,nfft=nfftcucaracha)
+plt.figure()
+plt.plot(tWCuca,(WCuca))
+plt.xlim(750,2500)
+plt.title("Figura[20]:Densidad espectral de potencia (Welch) con 20 promedios, de la cucaracha")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [V²/Hz]")
+plt.show()
+plt.figure()
+plt.plot(tWCuca,10*np.log10(WCuca))
+plt.title("Figura[21]:Densidad espectral de potencia (Welch) con 20 promedios en escala dB, de la cucaracha")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("PSD [dB/Hz]")
+plt.show() 
+
+#calculo de varianza acumulada 
+reescalado_ECG=WECGSR_ECG*1e-6
+dfECG_ECG=np.diff(tWECGSR_ECG)
+dfECG_ECG=np.r_[dfECG_ECG, dfECG_ECG[-1]]
+mascara=tWECGSR_ECG <= 50
+var_acumECG=np.cumsum(reescalado_ECG[mascara]*dfECG_ECG[mascara])
+VarnormECG=var_acumECG/var_acumECG[-1] #varianza normalizada
+p=0.99
+idx = np.searchsorted(VarnormECG, p)  # índice donde la curva ≥ p
+BWECG = tWECGSR_ECG[idx]                  # frecuencia de corte (float)
+print("Ancho d banda para la ECG:", BWECG)
+print("Varianza total para la ECG:", var_acumECG[-1])
