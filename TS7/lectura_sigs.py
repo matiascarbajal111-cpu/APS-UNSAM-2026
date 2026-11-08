@@ -5,6 +5,10 @@ Created on Wed Nov 8 19:55:30 2023
 
 @author: mariano
 """
+taps_win=7
+b_win_boxcar = sig.firwin2( taps_win, [0.0, wp, ws, fs_ecg/2], [1.0, 1.0, 0.0, 0.0], window='boxcar', fs = fs_ecg)
+b_win_blackman = sig.firwin2( taps_win, [0.0, wp, ws, fs_ecg/2], [1.0, 1.0, 0.0, 0.0], window='blackman', fs = fs_ecg)
+b_win_hamming = sig.firwin2( taps_win, [0.0, wp, ws, fs_ecg/2], [1.0, 1.0, 0.0, 0.0], window='hamming', fs = fs_ecg)
 
 import numpy as np
 import matplotlib.pyplot as plt
